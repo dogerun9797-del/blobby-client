@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 
 // --- CONSTANTS ---
@@ -7,7 +8,7 @@ const INITIAL_PLAYER_MASS = 20; // Used for camera zoom before first state sync
 // NOTE: This is a public WebSocket test server. For a real game, you would host your own backend.
 // This server simply broadcasts messages to all connected clients.
 // It does not run any game logic (like eating or scoring).
-const WEBSOCKET_URL = 'wss://socketsbay.com/wss/v2/1/demo/';
+const DEFAULT_WEBSOCKET_URL = 'wss://socketsbay.com/wss/v2/1/demo/';
 
 
 // --- TYPES --- (Shared with a potential server)
@@ -61,7 +62,8 @@ const massToRadius = (mass: number) => Math.sqrt(mass / Math.PI) * 10;
 const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
-  const animationFrameId = useRef<number>();
+  // FIX: The useRef hook requires an initial value. Initialize with undefined and update the type.
+  const animationFrameId = useRef<number | undefined>(undefined);
   const mousePosRef = useRef<Vector>({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
 
   // Multiplayer-specific refs
@@ -74,6 +76,7 @@ const App: React.FC = () => {
   const [score, setScore] = useState(0);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [playerName, setPlayerName] = useState("Player");
+  const [serverUrl, setServerUrl] = useState(DEFAULT_WEBSOCKET_URL);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -91,7 +94,7 @@ const App: React.FC = () => {
     }
     setGameState('connecting');
 
-    const socket = new WebSocket(WEBSOCKET_URL);
+    const socket = new WebSocket(serverUrl);
     socketRef.current = socket;
 
     socket.onopen = () => {
@@ -102,10 +105,18 @@ const App: React.FC = () => {
 
     socket.onmessage = (event) => {
         try {
-            // The public test server wraps messages in its own format. A real game server wouldn't.
-            const outerMessage = JSON.parse(event.data);
-            if (typeof outerMessage.message !== 'string') return;
-            const message = JSON.parse(outerMessage.message);
+            let message;
+            const rawData = JSON.parse(event.data);
+
+            // Check if it's the wrapped format from the public test server (socketsbay)
+            if (typeof rawData.message === 'string') {
+                message = JSON.parse(rawData.message);
+            } else {
+                // Assume it's the direct format from our own server
+                message = rawData;
+            }
+
+            if (!message || !message.type) return;
             
             // The server would send different types of messages to update the client.
             switch (message.type) {
@@ -132,7 +143,7 @@ const App: React.FC = () => {
                     break;
             }
         } catch (error) {
-            // Ignore non-JSON messages from the public test server
+            console.error("Failed to parse server message:", event.data, error);
         }
     };
 
@@ -147,7 +158,7 @@ const App: React.FC = () => {
             setGameState('disconnected');
         }
     };
-  }, [playerName, addMessage, gameState]);
+  }, [playerName, addMessage, gameState, serverUrl]);
 
   const handleSendMessage = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && chatInput.trim() !== "" && socketRef.current?.readyState === WebSocket.OPEN) {
@@ -277,10 +288,23 @@ const App: React.FC = () => {
               return (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-70 text-center p-4">
                     <h1 className="text-6xl font-bold text-white mb-4 tracking-wider">Blobby.io</h1>
-                    <p className="text-xl text-cyan-300 mb-4">Multiplayer Edition</p>
-                    <input type="text" placeholder="Enter your name" maxLength={15} value={playerName} onChange={(e) => setPlayerName(e.target.value)}
-                      className="mb-6 px-4 py-2 text-xl text-center text-white bg-gray-700 border-2 border-gray-500 rounded-lg focus:outline-none focus:border-blue-500" />
-                    <div className="text-lg text-gray-300 mb-8 max-w-lg space-y-2">
+                    <p className="text-xl text-cyan-300 mb-8">Multiplayer Edition</p>
+                    <div className="w-full max-w-sm space-y-4">
+                        <input type="text" placeholder="Enter your name" maxLength={15} value={playerName} onChange={(e) => setPlayerName(e.target.value)}
+                          className="w-full px-4 py-2 text-xl text-center text-white bg-gray-700 border-2 border-gray-500 rounded-lg focus:outline-none focus:border-blue-500" />
+                        <div>
+                            <label htmlFor="server-url" className="text-sm text-gray-400 block mb-1">Server Address</label>
+                            <input
+                                id="server-url"
+                                type="text"
+                                placeholder="wss://your-server-url"
+                                value={serverUrl}
+                                onChange={(e) => setServerUrl(e.target.value)}
+                                className="w-full px-4 py-2 text-md text-center text-white bg-gray-700 border-2 border-gray-500 rounded-lg focus:outline-none focus:border-blue-500"
+                            />
+                        </div>
+                    </div>
+                    <div className="text-lg text-gray-300 my-8 max-w-lg space-y-2">
                       <p>Move mouse to control. Eat food and other players to grow.</p>
                       <p>Press <span className="font-bold text-yellow-300">Space</span> to split.</p>
                     </div>
