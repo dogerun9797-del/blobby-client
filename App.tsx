@@ -101,6 +101,7 @@ const App: React.FC = () => {
         try {
             let message;
             const rawData = JSON.parse(event.data);
+            // Handle different message formats from different servers
             if (typeof rawData.message === 'string') {
                 message = JSON.parse(rawData.message);
             } else {
@@ -144,11 +145,17 @@ const App: React.FC = () => {
 
     socket.onclose = () => {
         console.log("WebSocket connection closed.");
-        if (gameState === 'playing') {
-            setGameState('disconnected');
-        }
+        // Use functional update to get the latest state and avoid stale closures.
+        // This ensures that if the connection fails while in the 'connecting' state,
+        // it correctly transitions to 'disconnected'.
+        setGameState(currentGameState => {
+            if (currentGameState === 'playing' || currentGameState === 'connecting') {
+                return 'disconnected';
+            }
+            return currentGameState;
+        });
     };
-  }, [playerName, addMessage, gameState]);
+  }, [playerName, addMessage]);
 
   const handleSendMessage = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && chatInput.trim() !== "" && socketRef.current?.readyState === WebSocket.OPEN) {
@@ -314,8 +321,9 @@ const App: React.FC = () => {
           case 'disconnected':
           case 'gameOver':
               return (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-80 backdrop-blur-sm text-center">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-80 backdrop-blur-sm text-center p-4">
                     <h1 className="text-6xl font-bold text-red-500 mb-4" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.7)'}}>{gameState === 'gameOver' ? 'Game Over' : 'Disconnected'}</h1>
+                    {gameState === 'disconnected' && <p className="text-xl text-gray-300 mb-4">Could not connect to the server. Please try again.</p>}
                     <p className="text-3xl text-white mb-2">Final Score</p>
                     <p className="text-5xl font-bold text-yellow-400 mb-8">{score}</p>
                     <button onClick={resetAndGoToStart} className="px-8 py-4 text-2xl font-bold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg shadow-lg hover:shadow-green-500/50 transition-transform transform hover:scale-105">
