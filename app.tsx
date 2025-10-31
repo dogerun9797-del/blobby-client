@@ -343,7 +343,7 @@ const App: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const chatInputRef = useRef<HTMLInputElement>(null);
     const animationFrameId = useRef<number | null>(null);
-    const mousePosRef = useRef<Vector>({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    const mousePosRef = useRef<Vector>({ x: 0, y: 0 });
     const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
     const [server] = useState(() => new GameServer());
     const playerIdRef = useRef<string | null>(null);
@@ -351,7 +351,7 @@ const App: React.FC = () => {
     const [uiState, setUiState] = useState<'start' | 'playing' | 'gameOver'>('start');
     const [serverState, setServerState] = useState<GameState | null>(null);
     const [score, setScore] = useState(0);
-    const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+    const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
     const [playerName, setPlayerName] = useState("Player");
     const [chatInput, setChatInput] = useState("");
 
@@ -490,24 +490,42 @@ const App: React.FC = () => {
             }
         }
     }, [uiState, windowSize, server]);
-
+    
+    // This effect runs ONCE on mount to set initial sizes and add listeners that don't depend on game state.
     useEffect(() => {
         const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
         const handleMouseMove = (e: MouseEvent) => { mousePosRef.current = { x: e.clientX, y: e.clientY }; };
-        
+
+        // Set initial values
+        handleResize();
+        mousePosRef.current = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
         window.addEventListener('resize', handleResize);
         window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('keydown', handleKeyDown);
-
-        if (uiState === 'playing') { animationFrameId.current = requestAnimationFrame(gameLoop); }
 
         return () => {
-            if (animationFrameId.current !== null) { cancelAnimationFrame(animationFrameId.current); }
             window.removeEventListener('resize', handleResize);
             window.removeEventListener('mousemove', handleMouseMove);
+        };
+    }, []); // Empty dependency array means it runs only once.
+
+    // This effect handles logic that DOES depend on game state (keyboard input, animation loop).
+    useEffect(() => {
+        window.addEventListener('keydown', handleKeyDown);
+        
+        if (uiState === 'playing') {
+            animationFrameId.current = requestAnimationFrame(gameLoop);
+        }
+
+        return () => {
+            if (animationFrameId.current !== null) {
+                cancelAnimationFrame(animationFrameId.current);
+                animationFrameId.current = null;
+            }
             window.removeEventListener('keydown', handleKeyDown);
         };
     }, [uiState, gameLoop, handleKeyDown]);
+
 
     const leaderboard = serverState?.leaderboard ?? [];
     const messages = serverState?.messages ?? [];
